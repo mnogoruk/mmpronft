@@ -3,6 +3,7 @@ import {BigNumber, ethers} from 'ethers'
 import MMPRONFT from './artifacts/contracts/MMPRONFT.sol/MMPRONFT.json'
 import IBEP20 from './artifacts/contracts/IBEP20.sol/IBEP20.json'
 import {useCallback, useEffect, useState} from "react";
+import popupStyles from "./custom-popup.module.css";
 
 const provider = new ethers.providers.Web3Provider(window.ethereum);
 const signer = provider.getSigner();
@@ -14,8 +15,8 @@ const busdAddress = '0x78867BbEeF44f2326bF8DDd1941a4439382EF2A7'
 
 
 const MMPRONFTContract = new ethers.Contract(mmmpronftAddress, MMPRONFT.abi, signer);
-const MMPROContract = new ethers.Contract(mmproAddress, IBEP20.abi, provider);
-const BUSDContract = new ethers.Contract(busdAddress, IBEP20.abi, provider);
+const MMPROContract = new ethers.Contract(mmproAddress, IBEP20.abi, signer);
+const BUSDContract = new ethers.Contract(busdAddress, IBEP20.abi, signer);
 
 const mmproSwapAmountMin = 4
 
@@ -46,6 +47,50 @@ async function getNftPrice() {
     return (await MMPRONFTContract.nftPrice()).toString()
 }
 
+const AllowPopup = (props) => {
+    const [show, setShow] = useState(false)
+    const [allowBusdAmount, setAllowBusdAmount] = useState()
+    const [loading, setLoading] = useState()
+
+    const closeHandler = (e) => {
+        setShow(false)
+    };
+
+    useEffect(() => {
+        setShow(props.show)
+    }, [props.show])
+
+    const handleAllow = async  () => {
+        const response = await BUSDContract.approve(mmmpronftAddress, BigNumber.from(allowBusdAmount))
+        setLoading(true)
+        await response.wait()
+        setLoading(false)
+        setShow(false)
+    }
+
+    return (
+        <div
+            style={{
+                visibility: show ? "visible" : "hidden",
+                opacity: show ? "1" : "0"
+            }}
+            className={popupStyles.overlay}
+        >
+            <div className={popupStyles.popup}>
+                <h2>{props.title}</h2>
+                <span className={popupStyles.close} onClick={closeHandler}>
+          &times;
+        </span>
+
+                <div className={popupStyles.content}>Need allow some busd to trade.</div>
+                <input type="number" value={allowBusdAmount} onChange={e => setAllowBusdAmount(e.target.value)}/>
+                <button onClick={handleAllow}>allow</button>{loading ? <Loader/> : ""}
+            </div>
+        </div>
+    );
+};
+
+
 function App() {
     const [userAccount, setUserAccount] = useState()
     const [tokenId, setTokenId] = useState()
@@ -63,7 +108,9 @@ function App() {
     const [waitSelling, setWaitSelling] = useState(false)
     const [loadingTokenList, setLoadingTokenList] = useState(true)
 
-    const authorized = useCallback( () => {
+    const [showPopup, setShowPopup] = useState(false)
+
+    const authorized = useCallback(() => {
         return !!userAccount;
     }, [userAccount])
 
@@ -86,13 +133,18 @@ function App() {
     }
 
     const buy = async () => {
-        const swapDeadline = Math.floor(Date.now() / 1000) + 60
-        const response = await MMPRONFTContract.buy(mmproSwapAmountMin, swapDeadline)
-        setWaitBuying(true)
-        await response.wait()
-        setWaitBuying(false)
-        await refreshBalance()
-
+        try {
+            const swapDeadline = Math.floor(Date.now() / 1000) + 60
+            const response = await MMPRONFTContract.buy(mmproSwapAmountMin, swapDeadline)
+            setWaitBuying(true)
+            await response.wait()
+            setWaitBuying(false)
+            await refreshBalance()
+        } catch (e) {
+            if (e.data.message === 'execution reverted: BEP20: transfer amount exceeds allowance') {
+                setShowPopup(true)
+            }
+        }
     }
 
     const sell = async () => {
@@ -149,6 +201,7 @@ function App() {
                     let _endBlock = i;
                     let _startBlock = i - 5000;
                     let buyEvents = await MMPRONFTContract.queryFilter(logFilterBuy, _startBlock, _endBlock);
+
                     for (let event of buyEvents) {
                         let token = event.args[1].toNumber()
                         _ownedTokens.push(token)
@@ -173,10 +226,8 @@ function App() {
                 for (let i = endBlock; i > startBlock; i -= 5000) {
                     let _endBlock = i;
                     let _startBlock = i - 5000;
-
                     let buyEvents = await MMPRONFTContract.queryFilter(logFilterSell, _startBlock, _endBlock);
-                    console.log({buyEvents})
-                    console.log({_startBlock})
+
                     for (let event of buyEvents) {
                         let token = event.args[1].toNumber()
                         _soldTokens.push(token)
@@ -193,7 +244,6 @@ function App() {
 
     useEffect(() => {
         const tokens = everBoughtTokens.filter(token => !everSoldTokens.includes(token))
-        console.log({tokens})
         setOwnedTokens(tokens)
         if ((tokens.length === nftBalance) && (nftBalance !== 0)) {
             setLoadingTokenList(false)
@@ -211,7 +261,7 @@ function App() {
             <h1 style={{margin: 50}}>MMPRO Balance: {mmproBalance}</h1>
             <h1 style={{margin: 50}}>NFT Price: {nftPrice}</h1>
 
-
+            <AllowPopup show={showPopup}/>
             <div style={{display: 'block', marginLeft: 50, marginBottom: 10, marginTop: 10}}>
                 <button onClick={buy}>buy
                     token

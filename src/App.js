@@ -2,7 +2,7 @@ import {BigNumber, ethers} from 'ethers'
 
 import MMPRONFT from './artifacts/contracts/MMPRONFT.sol/MMPRONFT.json'
 import IBEP20 from './artifacts/contracts/IBEP20.sol/IBEP20.json'
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 
 const provider = new ethers.providers.Web3Provider(window.ethereum);
 const signer = provider.getSigner();
@@ -63,9 +63,9 @@ function App() {
     const [waitSelling, setWaitSelling] = useState(false)
     const [loadingTokenList, setLoadingTokenList] = useState(true)
 
-    const authorized = () => {
+    const authorized = useCallback( () => {
         return !!userAccount;
-    }
+    }, [userAccount])
 
     const authorize = async () => {
         const account = await getAccount()
@@ -103,7 +103,7 @@ function App() {
         await refreshBalance()
     }
 
-    const refreshBalance = async () => {
+    const refreshBalance = useCallback(async () => {
         const _nftBalance = await getNftBalance(userAccount)
         const _busdBalance = await getBusdBalance(userAccount)
         const _mmproBalance = await getMmproBalance(userAccount)
@@ -112,7 +112,7 @@ function App() {
         setBusdBalance(_busdBalance)
         setMmproBalance(_mmproBalance)
         setNftPrice(_nftPrice)
-    }
+    }, [userAccount])
 
     useEffect(() => {
         provider.on("accountsChanged", (_) => window.location.reload())
@@ -133,7 +133,7 @@ function App() {
 
             _setBalance()
         }
-    }, [userAccount])
+    }, [userAccount, authorized, refreshBalance])
 
 
     useEffect(() => {
@@ -159,7 +159,7 @@ function App() {
 
             getBoughtToken()
         }
-    }, [userAccount])
+    }, [userAccount, authorized])
 
     useEffect(() => {
         if (authorized()) {
@@ -188,7 +188,7 @@ function App() {
 
             getSoldTokens()
         }
-    }, [userAccount])
+    }, [userAccount, authorized])
 
 
     useEffect(() => {
